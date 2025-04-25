@@ -1,0 +1,182 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+
+#define sensorOut 14 // TCS3200 sensor output connected to GPIO14 (D5)
+#define S0 5 // S0 connected to GPIO5 (D1)
+#define S1 4 // S1 connected to GPIO4 (D2)
+#define S2 0 // S2 connected to GPIO0 (D3)
+#define S3 2 // S3 connected to GPIO2 (D4)
+#define OPT101_PIN A0 // OPT101 output connected to A0
+
+
+const char* ssid = "Castro"; // Your WiFi SSID
+const char* password = "castro12"; // Your WiFi password
+const String serverURL = "http://192.168.43.224:4000/api/send-sensor-data"; // Node.js server URL
+
+int red = 0, green = 0, blue = 0;
+int previousRed = -1, previousGreen = -1, previousBlue = -1; // Store previous RGB values
+int previousOptValue = -1; // Store previous OPT101 value
+unsigned long startTime = 0; // Start time for timing
+bool isTiming = false; // Flag to indicate if timing is active
+
+void setup() {
+Serial.begin(115200); // Start serial communication
+
+// Connect to Wi-Fi
+WiFi.begin(ssid, password);
+while (WiFi.status() != WL_CONNECTED) {
+delay(1000);
+Serial.println("Connecting to WiFi...");
+}
+Serial.println("Connected to WiFi");
+
+pinMode(S0, OUTPUT); // Set S0 as an output
+pinMode(S1, OUTPUT); // Set S1 as an output
+pinMode(S2, OUTPUT); // Set S2 as an output
+pinMode(S3, OUTPUT); // Set S3 as an output
+pinMode(sensorOut, INPUT); // Set TCS3200 sensor output pin as an input
+
+// Set frequency scaling to 20% (stable readings)
+digitalWrite(S0, HIGH);
+digitalWrite(S1, LOW);
+
+// Initial color reading
+readColor();
+}
+
+void loop() {
+readColor(); // Continuously read the color every second
+delay(1000); // Wait for 1 second before taking another reading
+}
+
+void readColor() {
+// Read Red component
+digitalWrite(S2, LOW);
+digitalWrite(S3, LOW);
+red = readPulse(sensorOut);
+
+// Read Green component
+digitalWrite(S2, HIGH);
+digitalWrite(S3, HIGH);
+green = readPulse(sensorOut);
+
+// Read Blue component
+digitalWrite(S2, LOW);
+digitalWrite(S3, HIGH);
+blue = readPulse(sensorOut);
+
+// Map sensor values to 0-255 range
+red = map(red, 200, 20000, 0, 255);
+green = map(green, 200, 20000, 0, 255);
+blue = map(blue, 200, 20000, 0, 255);
+
+// Read the OPT101 sensor value
+ // OPT101
+  int opt101Value = analogRead(OPT101_PIN);
+  int normalizedOptValue = map(opt101Value, 0, 1023, 0, 10);
+  normalizedOptValue = constrain(normalizedOptValue, 0, 10);
+// Get the current color name
+String currentColor = getColorName(red, green, blue);
+
+// Check if RGB values or OPT101 value have changed
+if (red != previousRed || green != previousGreen || blue != previousBlue || opt101Value != previousOptValue) {
+// Calculate elapsed time
+unsigned long timeTaken = isTiming ? millis() - startTime : 0;
+
+// If the color is white, reset timing
+if (currentColor == "white") {
+if (isTiming) {
+isTiming = false; // Stop timing
+}
+} else {
+// If the color is not white, start timing if not already started
+if (!isTiming) {
+startTime = millis(); // Start the timer
+isTiming = true; // Set timing flag
+}
+}
+
+// Convert timeTaken to seconds
+float timeTakenInSeconds = (float)timeTaken / 1000;
+
+// Debug: Print the time taken in seconds
+Serial.print("Time Taken (seconds): ");
+Serial.println(timeTakenInSeconds, 2); // Print with 2 decimal places
+
+// Send the current RGB values, OPT101 value, color name, and elapsed time in seconds
+sendDataToServer(currentColor, red, green, blue, normalizedOptValue, timeTakenInSeconds);
+
+// Update previous values
+previousRed = red;
+previousGreen = green;
+previousBlue = blue;
+previousOptValue = normalizedOptValue;
+}
+
+// Log the values for debugging
+Serial.print("Red: "); Serial.print(red);
+Serial.print(" | Green: "); Serial.print(green);
+Serial.print(" | Blue: "); Serial.print(blue);
+Serial.print(" | Color: "); Serial.print(currentColor);
+Serial.print(" | OPT101 Value: "); Serial.println(normalizedOptValue); // Display the OPT101 value
+}
+
+int readPulse(int pin) {
+unsigned long duration = pulseIn(pin, LOW, 1000000); // Timeout after 1 second
+if (duration == 0) {
+return 0;
+}
+return duration;
+}
+
+// Function to determine the color name based on RGB values
+String getColorName(int red, int green, int blue) {
+if (red == -1 && green == -1 && blue == -1) {
+return "white";
+} else if (red == 3 && green == 3 && blue == 1) {
+return "blue";
+} else if (red == -1 && green == 0 && blue == 0) {
+return "orange";
+} else if (red == 2 && green == 2 && blue == 255) {
+return "Blue";
+} else if (red == 255 && green == 255 && blue == 0) {
+return "Yellow";
+} else if (red == 0 && green == 255 && blue == 255) {
+return "Cyan";
+} else if (red == 255 && green == 0 && blue == 255) {
+return "Magenta";
+}
+return "Unknown";
+}
+
+void sendDataToServer(String color, int r, int g, int b, int optValue, float timeTaken) {
+if (WiFi.status() == WL_CONNECTED) {
+HTTPClient http;
+WiFiClient client;
+http.begin(client, serverURL);
+http.addHeader("Content-Type", "application/json");
+
+// Create JSON payload with named RGB properties, OPT101 value, color name, and time taken
+String jsonPayload = "{\"color\":\"" + color + 
+"\",\"RGB\":{\"red\":" + String(r) + 
+",\"green\":" + String(g) + 
+",\"blue\":" + String(b) + 
+"},\"opt101Value\":" + String(optValue) + 
+",\"timeTaken\":" + String(timeTaken, 2) + "}"; // Format to 2 decimal places
+
+int httpResponseCode = http.POST(jsonPayload);
+
+Serial.print("HTTP Response Code: ");
+Serial.println(httpResponseCode);
+
+if (httpResponseCode > 0) {
+Serial.println("Data sent successfully");
+} else {
+Serial.println("Failed to send data");
+}
+
+http.end();
+} else {
+Serial.println("WiFi not connected");
+}
+}
