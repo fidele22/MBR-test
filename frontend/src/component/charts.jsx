@@ -6,6 +6,8 @@ const SensorGraphs = () => {
   const [sensorData, setSensorData] = useState([]);
   const [timeTaken, setTimeTaken] = useState(0); 
   const [timeIntervals, setTimeIntervals] = useState([]);
+  const [prediction, setPrediction] = useState(null);
+
 
   const fetchSensorData = async () => {
     try {
@@ -46,69 +48,118 @@ const SensorGraphs = () => {
     }
   };
 
+  // useEffect(() => {
+  //   fetchSensorData(); // Fetch initially
+  //   fetchPrediction(); 
+  //   const interval = setInterval(fetchSensorData, 1000); // Refresh every 2 seconds
+
+  //   return () => clearInterval(interval); // Cleanup on unmount
+  // }, []);
   useEffect(() => {
-    fetchSensorData(); // Fetch initially
-    const interval = setInterval(fetchSensorData, 1000); // Refresh every 2 seconds
-
-    return () => clearInterval(interval); // Cleanup on unmount
+    fetchSensorData();
+    fetchPrediction(); // ← fetch the prediction too
+    const interval = setInterval(() => {
+      fetchSensorData();
+      fetchPrediction();  // update prediction periodically
+    }, 2000);
+  
+    return () => clearInterval(interval);
   }, []);
-
+  
+  // fetch result of prediction
+  const fetchPrediction = async () => {
+    try {
+      const response = await fetch("http://localhost:4000/api/predict_data");
+      const data = await response.json();
+      console.log("Prediction:", data);
+      setPrediction(data.prediction);
+    } catch (error) {
+      console.error("Error fetching prediction:", error);
+    }
+  };
+  
   return (
-    <div>
-      {/* Box to display time taken in seconds */}
-      <div className="time-taken">
+    <div className="sensor-page">
+    {/* Navigation Bar */}
+    <nav className="navbar">
+      <div className="navbar-title">MBR Test</div>
+    </nav>
 
-        <div className="time" >
-        <h3>Time Taken: {timeTaken.toFixed(2)} seconds</h3>
+    <div className="content">
+      {/* Time Display Section */}
+      <div className="info-box">
+        <div className="time">
+          <h3>Time Taken: {timeTaken.toFixed(2)} seconds</h3>
         </div>
         <div className="data-sample">
-   {/* Include the TimeIntervalsList component */}
-   <TimeIntervalsList />
+          <TimeIntervalsList />
         </div>
+        {prediction && (
+  <div className="prediction-box">
+    <h3>ML Prediction Result:</h3>
+    Milk Quality is:<p style={{ color: prediction.label === "Good" ? "green" : "red" }}>
+    {prediction.label}
+    </p>
+  </div>
+)}
+
+
+
+
 
       </div>
 
-      <h2>Color Sensor Data (RGB)</h2>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={sensorData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="timestamp" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Line type="monotone" dataKey="RGB.red" stroke="red" />
-          <Line type="monotone" dataKey="RGB.green" stroke="green" />
-          <Line type="monotone" dataKey="RGB.blue" stroke="blue" />
-        </LineChart>
-      </ResponsiveContainer>
+      {/* Grid Container for Charts */}
+      <div className="chart-grid">
+        <div className="chart-card">
+          <h2>Color Sensor Data (RGB)</h2>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={sensorData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="RGB.red" stroke="red" />
+              <Line type="monotone" dataKey="RGB.green" stroke="green" />
+              <Line type="monotone" dataKey="RGB.blue" stroke="blue" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
 
-      <h2>Photodiode Sensor (Light Intensity)</h2>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={sensorData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="timestamp" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Line type="monotone" dataKey="lightIntensity" stroke="orange" />
-        </LineChart>
-      </ResponsiveContainer>
+        <div className="chart-card">
+          <h2>Photodiode Sensor (Light Intensity)</h2>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={sensorData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="lightIntensity" stroke="orange" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
 
-      <h2>Combined Sensor Data</h2>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={sensorData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="timestamp" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Line type="monotone" dataKey="RGB.red" stroke="red" />
-          <Line type="monotone" dataKey="RGB.green" stroke="green" />
-          <Line type="monotone" dataKey="RGB.blue" stroke="blue" />
-          <Line type="monotone" dataKey="lightIntensity" stroke="orange" />
-        </LineChart>
-      </ResponsiveContainer>
+        <div className="chart-card">
+          <h2>Combined Sensor Data</h2>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={sensorData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="RGB.red" stroke="red" />
+              <Line type="monotone" dataKey="RGB.green" stroke="green" />
+              <Line type="monotone" dataKey="RGB.blue" stroke="blue" />
+              <Line type="monotone" dataKey="lightIntensity" stroke="orange" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
+  </div>
   );
 };
 

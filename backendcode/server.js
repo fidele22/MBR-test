@@ -2,6 +2,8 @@ const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const { spawn } = require("child_process");
+const path = require("path");
 
 const app = express();
 const PORT = 4000;
@@ -53,7 +55,7 @@ app.post("/api/send-sensor-data", async (req, res) => {
 });
 
 
-// API endpoint to fetch all sensor data
+// API endpoint to fetch all sensor data and used to display it on frontend charts
 app.get("/api/sensor-data", async (req, res) => {
   try {
     const data = await SensorData.find().sort({ timestamp: -1 }).limit(10); // Get last 20 entries
@@ -64,6 +66,7 @@ app.get("/api/sensor-data", async (req, res) => {
   }
 });
 
+//router used to fetch and display the stoping time taken 
 app.get("/api/all-sensor-data", async (req, res) => {
   try {
     const data = await SensorData.find().sort({ timestamp: 1 }); // Get all data in chronological order
@@ -74,6 +77,46 @@ app.get("/api/all-sensor-data", async (req, res) => {
   }
 });
 
+// Endpoint to fetch latest sensor data and used in ML prediction 
+app.get("/api/predict_data", async (req, res) => {
+  try {
+    const latest = await SensorData.findOne().sort({ timestamp: -1 });
+
+    if (!latest) return res.status(404).json({ message: "No data found" });
+
+    // Spawn Python process
+  // Full path to the predict.py file
+const scriptPath = path.join(__dirname, "..", "pythonML", "predict_milk_quality.py");
+
+const python = spawn("python3", [scriptPath]);
+    let result = "";
+
+    // Send data to Python
+    python.stdin.write(JSON.stringify(latest));
+    python.stdin.end();
+
+    python.stdout.on("data", (data) => {
+      console.log("Raw output from Python:", data.toString());  // <-- Add this
+      result += data.toString();
+    });
+
+    python.stderr.on("data", (data) => {
+      console.error("Python error:", data.toString());
+    });
+
+    python.on("close", (code) => {
+      if (code !== 0) return res.status(500).json({ error: "Prediction failed" });
+      const prediction = JSON.parse(result);
+      res.json({
+        input: latest,
+        prediction
+      });
+    });
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

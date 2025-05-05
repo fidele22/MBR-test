@@ -1,33 +1,37 @@
-import numpy as np
+# predict.py
+import sys
+import os
+import json
 import pandas as pd
 from joblib import load
 
-# Load saved model, scaler, and encoder
-model = load("random_forest_model.joblib")
-scaler = load("scaler.joblib")
-label_encoder = load("label_encoder.joblib")
+# Get current script directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Define new sensor input
-new_data = {
-    'RGB.red': 120,
-    'RGB.green': 200,
-    'RGB.blue': 150,
-    'lightIntensity': 450.75,
-    'timeTaken': 14500
-}
+# Load model and preprocessors using absolute paths
+model = load(os.path.join(BASE_DIR, "random_forest_model.joblib"))
+scaler = load(os.path.join(BASE_DIR, "scaler.joblib"))
+label_encoder = load(os.path.join(BASE_DIR, "label_encoder.joblib"))
 
-# Convert input to a pandas DataFrame with correct column names
-input_df = pd.DataFrame([new_data])
+# Get JSON from Node.js
+input_json = json.load(sys.stdin)
 
-# Scale input data
+# Create DataFrame
+input_df = pd.DataFrame([{
+    'RGB.red': input_json['RGB']['red'],
+    'RGB.green': input_json['RGB']['green'],
+    'RGB.blue': input_json['RGB']['blue'],
+    'lightIntensity': input_json['lightIntensity'],
+    'timeTaken': input_json['timeTaken']
+}])
+
+# Scale and predict
 scaled_input = scaler.transform(input_df)
-scaled_df = pd.DataFrame(scaled_input, columns=input_df.columns)
-
-# Predict
-prediction = model.predict(scaled_df)
+prediction = model.predict(scaled_input)
 predicted_label = label_encoder.inverse_transform(prediction)[0]
 
-# Output
-print(f"\n Input Sensor Data: {new_data}")
-print(f" Predicted Milk Quality (Encoded): {int(prediction[0])}")
-print(f" Predicted Milk Quality: {predicted_label}")
+# Return result
+print(json.dumps({
+    "encoded": int(prediction[0]),
+    "label": predicted_label
+}))
